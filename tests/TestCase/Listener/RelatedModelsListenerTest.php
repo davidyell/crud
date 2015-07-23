@@ -1,6 +1,9 @@
 <?php
 namespace Crud\Test\TestCase\Listener;
 
+use Cake\Event\Event;
+use Cake\ORM\Query;
+use Crud\Event\Subject;
 use Crud\TestSuite\TestCase;
 
 /**
@@ -10,6 +13,9 @@ use Crud\TestSuite\TestCase;
  */
 class RelatedModelListenerTest extends TestCase
 {
+
+    public $fixtures = ['plugin.crud.blogs', 'plugin.crud.tags'];
+    public $autoFixtures = false;
 
     /**
      * testModels
@@ -232,5 +238,69 @@ class RelatedModelListenerTest extends TestCase
         $result = $listener->getAssociatedByName(['posts']);
 
         $this->assertEquals($expected, $result);
+    }
+
+    /**
+     * Ensure that when related table are configured and Crud uses paginate that the tables are contained
+     *
+     */
+    public function testContainingRelatedTables()
+    {
+        $this->markTestIncomplete('This test relies on having a return in the event.');
+
+        $listener = $this
+            ->getMockBuilder('\Crud\Listener\RelatedModelsListener')
+            ->disableOriginalConstructor()
+            ->setMethods(['relatedModels'])
+            ->getMock();
+
+        $listener
+            ->expects($this->once())
+            ->method('relatedModels')
+            ->will($this->returnValue([
+                'Users' => [
+                    'Posts'
+                ],
+                'Tags'
+            ]));
+
+        $db = $this->getMockBuilder('\Cake\Database\Connection')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $query = new Query($db, null);
+
+        $subject = new Subject(['query' => $query]);
+        $event = new Event('beforePaginate', $subject);
+
+        $result = $listener->beforePaginate($event);
+        $contain = $result->query->contain();
+
+        $this->assertNotNull($contain);
+        $this->assertArrayHasKey('Users', $contain);
+        $this->assertArrayHasKey('Tags', $contain);
+        $this->assertArrayHasKey('Posts', $contain['Users']);
+    }
+
+    public function testRelatedTableLoading()
+    {
+        $controller = new \Crud\Test\App\Controller\BlogsController();
+        $controller->Blogs->hasMany('Tags');
+
+        $controller->Crud->config('actions.index', ['className' => 'Crud.Index', 'relatedModels' => ['Tags']]);
+
+        $controller->eventManager()->on('Crud.beforePaginate', new \Crud\Listener\RelatedModelsListener($controller));
+
+        $this->loadFixtures('Blogs', 'Tags');
+        $q = $controller->paginate($controller->Blogs);
+
+//        $reflect = new \ReflectionClass($q);
+//        $property = $reflect->getProperty('_query');
+//        $property->setAccessible(true);
+//
+//        var_dump($property->getValue($reflect));
+
+//        var_dump($q->toArray());
+
     }
 }
